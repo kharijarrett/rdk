@@ -248,12 +248,17 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 	}
 	o.obstaclePts = obstaclePoints
 
-	// Cluster on the 2D depth points and then project the 2D clusters into 3D boxes
+	/*// Cluster on the 2D depth points and then project the 2D clusters into 3D boxes
 	outClusters, err := o.performKMeans(o.k)
 	if err != nil {
 		return nil, err
 	}
 	boxes, err := o.clustersToBoxes(outClusters)
+	if err != nil {
+		return nil, err
+	}
+	*/
+	boxes, outClusters, err := o.performKMeans3D(o.k)
 	if err != nil {
 		return nil, err
 	}
@@ -351,4 +356,59 @@ func (o *obsDepth) performKMeans(k int) (clusters.Clusters, error) {
 	}
 	km := kmeans.New()
 	return km.Partition(d, k)
+}
+
+// performKMeans will do k-means clustering on all the 2D obstacle points.
+func (o *obsDepth) performKMeans3D(k int) ([]spatialmath.Geometry, clusters.Clusters, error) {
+	var d clusters.Observations
+	for _, pt := range o.obstaclePts {
+		outX, outY, outZ := o.intrinsics.PixelToPoint(float64(pt.X), float64(pt.Y), float64(o.dm.GetDepth(pt.X, pt.Y)))
+		d = append(d, clusters.Coordinates{outX, outY, outZ})
+	}
+	km := kmeans.New()
+	clusters, err := km.Partition(d, k)
+	if err != nil {
+		return nil, nil, err
+	}
+	boxes := make([]spatialmath.Geometry, 0, len(clusters))
+
+	for i, c := range clusters {
+		xmax, ymax, zmax := math.Inf(-1), math.Inf(-1), math.Inf(-1)
+		xmin, ymin, zmin := math.Inf(1), math.Inf(1), math.Inf(1)
+
+		for _, pt := range c.Observations {
+			x, y, z := pt.Coordinates().Coordinates()[0], pt.Coordinates().Coordinates()[1], pt.Coordinates().Coordinates()[2]
+
+			if x < xmin {
+				xmin = x
+			}
+			if x > xmax {
+				xmax = x
+			}
+			if y < ymin {
+				ymin = y
+			}
+			if y > ymax {
+				ymax = y
+			}
+			if z < zmin {
+				zmin = z
+			}
+			if z > zmax {
+				zmax = z
+			}
+		}
+		// Make a box from those bounds and add it in
+		xdiff, ydiff, zdiff := xmax-xmin, ymax-ymin, zmax-zmin
+		xc, yc, zc := (xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2
+		pose := spatialmath.NewPose(r3.Vector{xc, yc, zc}, spatialmath.NewZeroOrientation())
+
+		box, err := spatialmath.NewBox(pose, r3.Vector{xdiff, ydiff, zdiff}, strconv.Itoa(i))
+		if err != nil {
+			return nil, nil, err
+		}
+		boxes = append(boxes, box)
+
+	}
+	return boxes, clusters, err
 }

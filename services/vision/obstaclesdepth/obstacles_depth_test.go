@@ -165,6 +165,7 @@ func BenchmarkObstacleDepthIntrinsics(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		srv.GetObjectPointClouds(ctx, "testCam", nil)
 	}
+
 }
 
 func BenchmarkObstacleDepthNoIntrinsics(b *testing.B) {
