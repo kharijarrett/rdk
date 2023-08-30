@@ -273,6 +273,7 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 		if o.returnPCDs {
 			fmt.Println("WE WANT POINTCLOUDS. WE WANT POINTCLOUDS YEAAH")
 			pcdToReturn := pointcloud.NewWithPrealloc(len(outClusters[i].Observations))
+			fmt.Println(len(outClusters[i].Observations))
 			basicData := pointcloud.NewBasicData()
 			for _, pt := range outClusters[i].Observations {
 				if len(pt.Coordinates()) >= 3 {
