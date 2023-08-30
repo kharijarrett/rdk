@@ -280,9 +280,9 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 				fmt.Printf("Coordinates: %v\n", pt.Coordinates())
 				fmt.Printf("Coordinates[0]: %v\n", pt.Coordinates()[0])
 				fmt.Printf("Coordinates[1]: %v\n", pt.Coordinates()[1])
-				if len(pt.Coordinates()) >= 3 {
+				if len(pt.Coordinates()) >= 2 {
 					fmt.Println(len(outClusters[i].Observations))
-					vec := r3.Vector{X: pt.Coordinates()[0], Y: pt.Coordinates()[1], Z: pt.Coordinates()[2]}
+					vec := r3.Vector{X: pt.Coordinates()[0], Y: pt.Coordinates()[1], Z: 0}
 					err = pcdToReturn.Set(vec, basicData)
 					if err != nil {
 						return nil, err
