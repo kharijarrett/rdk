@@ -293,7 +293,7 @@ func (o *obsDepth) isCompatible(p1, p2 image.Point) bool {
 	return true
 }
 
-// performKMeans3D will do k-means clustering on projected obstacle points
+// performKMeans3D will do k-means clustering on projected obstacle points.
 func (o *obsDepth) performKMeans3D(k int) ([]spatialmath.Geometry, clusters.Clusters, error) {
 	var d clusters.Observations
 	for _, pt := range o.obstaclePts {
@@ -343,7 +343,6 @@ func (o *obsDepth) performKMeans3D(k int) ([]spatialmath.Geometry, clusters.Clus
 			return nil, nil, err
 		}
 		boxes = append(boxes, box)
-
 	}
 	return boxes, clusters, err
 }

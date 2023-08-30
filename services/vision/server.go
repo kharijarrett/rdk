@@ -3,7 +3,7 @@ package vision
 import (
 	"bytes"
 	"context"
-	"fmt"
+
 	"github.com/pkg/errors"
 	"go.opencensus.io/trace"
 	commonpb "go.viam.com/api/common/v1"
@@ -212,10 +212,6 @@ func segmentsToProto(frame string, segs []*vision.Object) ([]*commonpb.PointClou
 				ReferenceFrame: frame,
 			},
 		}
-		fmt.Println("Proto out from server:")
-		fmt.Printf("Geometry: %v\n", seg.Geometry.ToProtobuf())
-		fmt.Printf("Pointcloud :%v\n", seg.PointCloud)
-
 		protoSegs = append(protoSegs, ps)
 	}
 
