@@ -277,6 +277,9 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 			basicData := pointcloud.NewBasicData()
 			for _, pt := range outClusters[i].Observations {
 				fmt.Printf("Num of coordinates %v\n", len(pt.Coordinates()))
+				fmt.Printf("Coordinates: %v\n", pt.Coordinates())
+				fmt.Printf("Coordinates[0]: %v\n", pt.Coordinates()[0])
+				fmt.Printf("Coordinates[1]: %v\n", pt.Coordinates()[1])
 				if len(pt.Coordinates()) >= 3 {
 					fmt.Println(len(outClusters[i].Observations))
 					vec := r3.Vector{X: pt.Coordinates()[0], Y: pt.Coordinates()[1], Z: pt.Coordinates()[2]}
