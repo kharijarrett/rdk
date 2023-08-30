@@ -283,6 +283,7 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 					}
 				}
 			}
+			fmt.Printf("PCD size goin in is: %v\n", pcdToReturn.Size())
 			toReturn[i] = &vision.Object{PointCloud: pcdToReturn, Geometry: boxes[i]}
 		} else {
 			fmt.Println("NO PCDS")
