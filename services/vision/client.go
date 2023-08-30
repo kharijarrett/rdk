@@ -215,6 +215,8 @@ func protoToObjects(pco []*commonpb.PointCloudObject) ([]*vision.Object, error) 
 		fmt.Println("PCO:")
 		fmt.Println(p.Geometries)
 		fmt.Println(p.Geometries.GetGeometries())
+		fmt.Println("Len of pcd:")
+		fmt.Println(len(p.PointCloud))
 	}
 	objects := make([]*vision.Object, len(pco))
 	for i, o := range pco {
