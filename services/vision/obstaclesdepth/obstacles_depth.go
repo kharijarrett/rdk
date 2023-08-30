@@ -248,23 +248,11 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 	}
 	o.obstaclePts = obstaclePoints
 
-	// Cluster on the 2D depth points and then project the 2D clusters into 3D boxes
-	outClusters, err := o.performKMeans(o.k)
+	// Cluster the points in 3D
+	boxes, outClusters, err := o.performKMeans3D(o.k)
 	if err != nil {
 		return nil, err
 	}
-	boxes, err := o.clustersToBoxes(outClusters)
-	if err != nil {
-		return nil, err
-	}
-	/*
-		// Cluster the points in 3D
-			boxes, outClusters, err := o.performKMeans3D(o.k)
-			if err != nil {
-				return nil, err
-			}
-
-	*/
 
 	// Packaging the return depending on if they want PCDs
 	n := int(math.Min(float64(len(outClusters)), float64(len(boxes)))) // should be same len but for safety
@@ -280,9 +268,9 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 				fmt.Printf("Coordinates: %v\n", pt.Coordinates())
 				fmt.Printf("Coordinates[0]: %v\n", pt.Coordinates()[0])
 				fmt.Printf("Coordinates[1]: %v\n", pt.Coordinates()[1])
-				if len(pt.Coordinates()) >= 2 {
+				if len(pt.Coordinates()) >= 3 {
 					fmt.Println(len(outClusters[i].Observations))
-					vec := r3.Vector{X: pt.Coordinates()[0], Y: pt.Coordinates()[1], Z: 0}
+					vec := r3.Vector{X: pt.Coordinates()[0], Y: pt.Coordinates()[1], Z: pt.Coordinates()[2]}
 					err = pcdToReturn.Set(vec, basicData)
 					if err != nil {
 						return nil, err
@@ -370,7 +358,7 @@ func (o *obsDepth) performKMeans(k int) (clusters.Clusters, error) {
 	return km.Partition(d, k)
 }
 
-// performKMeans will do k-means clustering on all the 2D obstacle points.
+// performKMeans3D will do k-means clustering on projected obstacle points
 func (o *obsDepth) performKMeans3D(k int) ([]spatialmath.Geometry, clusters.Clusters, error) {
 	var d clusters.Observations
 	for _, pt := range o.obstaclePts {

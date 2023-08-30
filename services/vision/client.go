@@ -211,13 +211,7 @@ TODO: KJ, litter this (and the server alternative) with print statemtents and fi
 This is bad need to fix in next PR
 */
 func protoToObjects(pco []*commonpb.PointCloudObject) ([]*vision.Object, error) {
-	for _, p := range pco {
-		fmt.Println("PCO:")
-		fmt.Println(p.Geometries)
-		fmt.Println(p.Geometries.GetGeometries())
-		fmt.Println("Len of pcd:")
-		fmt.Println(len(p.PointCloud))
-	}
+
 	objects := make([]*vision.Object, len(pco))
 	for i, o := range pco {
 		pc, err := pointcloud.ReadPCD(bytes.NewReader(o.PointCloud))
@@ -233,13 +227,9 @@ func protoToObjects(pco []*commonpb.PointCloudObject) ([]*vision.Object, error) 
 			}
 			return ""
 		}()
-		n := 9999
-		fmt.Printf("N: %v\n", n)
-		if i < n {
-			objects[i], err = vision.NewObjectWithLabel(pc, label, o.Geometries.GetGeometries()[0])
-		} else {
-			objects[i], err = vision.NewObjectWithLabel(pc, label, nil)
-		}
+
+		objects[i], err = vision.NewObjectWithLabel(pc, label, o.Geometries.GetGeometries()[0])
+
 		fmt.Println("Object:")
 		fmt.Printf("Geometry: %v\n", objects[i].Geometry)
 		fmt.Printf("PCD size: %v\n", objects[i].PointCloud.Size())
