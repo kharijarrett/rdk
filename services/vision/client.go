@@ -206,6 +206,10 @@ func (c *client) GetObjectPointClouds(
 	return protoToObjects(resp.Objects)
 }
 
+/*
+TODO: KJ, litter this (and the server alternative) with print statemtents and find out why every geometry doesn't come thru
+This is bad need to fix in next PR
+*/
 func protoToObjects(pco []*commonpb.PointCloudObject) ([]*vision.Object, error) {
 	objects := make([]*vision.Object, len(pco))
 	for i, o := range pco {
@@ -228,10 +232,15 @@ func protoToObjects(pco []*commonpb.PointCloudObject) ([]*vision.Object, error) 
 		} else {
 			objects[i], err = vision.NewObjectWithLabel(pc, label, nil)
 		}
+		fmt.Println("Object:")
+		fmt.Printf("Geometry: %v\n", objects[i].Geometry)
+		fmt.Printf("PCD size: %v\n", objects[i].PointCloud.Size())
+
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return objects, nil
 }
 
