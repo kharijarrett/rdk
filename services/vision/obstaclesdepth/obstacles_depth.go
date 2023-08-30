@@ -5,6 +5,7 @@ package obstaclesdepth
 
 import (
 	"context"
+	"fmt"
 	"image"
 	"math"
 	"sort"
@@ -270,6 +271,7 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 	toReturn := make([]*vision.Object, n)
 	for i := 0; i < n; i++ { // for each cluster/box make an object
 		if o.returnPCDs {
+			fmt.Println("WE WANT POINTCLOUDS. WE WANT POINTCLOUDS YEAAH")
 			pcdToReturn := pointcloud.New()
 			basicData := pointcloud.NewBasicData()
 			for _, pt := range outClusters[i].Observations {
@@ -283,6 +285,7 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 			}
 			toReturn[i] = &vision.Object{PointCloud: pcdToReturn, Geometry: boxes[i]}
 		} else {
+			fmt.Println("NO PCDS")
 			toReturn[i] = &vision.Object{Geometry: boxes[i]}
 		}
 	}
