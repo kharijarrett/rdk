@@ -13,12 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/gostream"
 	"go.opencensus.io/trace"
-	"image"
-	"math"
-	"sort"
-	"strconv"
-	"sync"
-
 	"go.viam.com/rdk/components/camera"
 	"go.viam.com/rdk/pointcloud"
 	"go.viam.com/rdk/resource"
@@ -29,6 +23,11 @@ import (
 	"go.viam.com/rdk/spatialmath"
 	"go.viam.com/rdk/utils"
 	vision "go.viam.com/rdk/vision"
+	"image"
+	"math"
+	"sort"
+	"strconv"
+	"sync"
 )
 
 var model = resource.DefaultModelFamily.WithModel("obstacles_depth")
@@ -210,43 +209,70 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 		return nil, errors.New("could not convert image to depth map")
 	}
 	o.dm = dm
-	o.obstaclePtMap = make(map[image.Point]struct{})
-
-	var wg sync.WaitGroup
-	var lock sync.Mutex
-
 	o.makePointList2()
-	for _, pt := range o.depthPts {
+
+	var obsPointMap sync.Map //map[image.Point]struct{}
+	var wg sync.WaitGroup
+
+	for j := dm.Height() - 1; j >= 0; j-- { //start from the bottom left
 		wg.Add(1)
-		go func(pt []int) {
+		go func(j int) {
 			defer wg.Done()
-			// Check if in map
-			lock.Lock()
+			for i := 0; i < dm.Width(); i += sampleN {
+				candidate := image.Pt(i, j)
+
+				// if candidate is in map, continue
+				_, ok := obsPointMap.Load(candidate)
+				if ok {
+					continue
+				}
+
+				addCand := false
+				// Add every compatible pt you see to the map
+				for _, comparePt := range o.depthPts {
+					if o.isCompatible2([]int{i, j, int(o.dm.GetDepth(i, j))}, comparePt) {
+						obsPointMap.Store(image.Pt(comparePt[0], comparePt[1]), struct{}{})
+						addCand = true
+					}
+				}
+				if addCand {
+					obsPointMap.Store(candidate, struct{}{})
+				}
+			}
+
+		}(j)
+	}
+
+	wg.Wait()
+	obstaclePoints := make([][]float64, 0, o.dm.Width()*o.dm.Height()/sampleN)
+	obsPointMap.Range(func(key, value any) bool {
+		pt, ok := key.(image.Point)
+		if ok {
+			obstaclePoints = append(obstaclePoints, []float64{float64(pt.X), float64(pt.Y), float64(o.dm.GetDepth(pt.X, pt.Y))})
+		}
+		return ok
+	})
+	o.obstaclePts = obstaclePoints
+	fmt.Printf("LEN OF THE OBSTACLE PT MAP %v\n", len(o.obstaclePts))
+	/*
+		o.makePointList2()
+		for _, pt := range o.depthPts {
 			_, ok := o.obstaclePtMap[image.Pt(pt[0], pt[1])]
-			lock.Unlock()
 			if ok {
-				return
+				continue
 			}
 
 			// Add every compatible pt you see to the map
 			for _, comparePt := range o.depthPts {
 				if o.isCompatible2(pt, comparePt) {
-					lock.Lock()
 					o.obstaclePtMap[image.Pt(comparePt[0], comparePt[1])] = struct{}{}
 					o.obstaclePtMap[image.Pt(pt[0], pt[1])] = struct{}{}
-					lock.Unlock()
 				}
 			}
-		}(pt)
+		}
 
-	}
+	*/
 
-	wg.Wait()
-	fmt.Printf("LEN OF THE OBSTACLE PT MAP %v\n", len(o.obstaclePtMap))
-	obstaclePoints := make([][]float64, 0, o.dm.Width()*o.dm.Height()/sampleN)
-	for pt := range o.obstaclePtMap {
-		obstaclePoints = append(obstaclePoints, []float64{float64(pt.X), float64(pt.Y), float64(o.dm.GetDepth(pt.X, pt.Y))})
-	}
 	o.showObstaclePts("checkme.png", obstaclePoints)
 	//fmt.Println("THE OBSTACLE POINTS:")
 	//fmt.Println(obstaclePoints)
