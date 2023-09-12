@@ -221,15 +221,18 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 			for i := 0; i < dm.Width(); i += sampleN {
 				candidate := image.Pt(i, j)
 
-				// if candidate is in map, continue
+				// if candidate is in map, continue to the next point
 				_, ok := obsPointMap.Load(candidate)
 				if ok {
 					continue
 				}
 
 				addCand := false
-				// Add every compatible pt you see to the map
+				// Add every compatible pt you see to the map (and the candidate)
 				for _, comparePt := range o.depthPts {
+					if comparePt[0] == i && comparePt[1] == j {
+						continue
+					}
 					if o.isCompatible2([]int{i, j, int(o.dm.GetDepth(i, j))}, comparePt) {
 						obsPointMap.Store(image.Pt(comparePt[0], comparePt[1]), struct{}{})
 						addCand = true
@@ -239,11 +242,11 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 					obsPointMap.Store(candidate, struct{}{})
 				}
 			}
-
 		}(j)
 	}
 
 	wg.Wait()
+	// populate this slice with the points from the map
 	obstaclePoints := make([][]float64, 0, o.dm.Width()*o.dm.Height()/sampleN)
 	obsPointMap.Range(func(key, value any) bool {
 		pt, ok := key.(image.Point)
@@ -254,6 +257,7 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 	})
 	o.obstaclePts = obstaclePoints
 	fmt.Printf("LEN OF THE OBSTACLE PT MAP %v\n", len(o.obstaclePts))
+
 	/*
 		o.makePointList2()
 		for _, pt := range o.depthPts {
