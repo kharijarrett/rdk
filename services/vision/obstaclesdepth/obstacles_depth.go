@@ -5,11 +5,7 @@ package obstaclesdepth
 
 import (
 	"context"
-	"math"
-	"sort"
-	"strconv"
-	"sync"
-
+	"fmt"
 	"github.com/edaniels/golog"
 	"github.com/golang/geo/r3"
 	"github.com/muesli/clusters"
@@ -17,6 +13,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/viamrobotics/gostream"
 	"go.opencensus.io/trace"
+	"image"
+	"math"
+	"sort"
+	"strconv"
+	"sync"
 
 	"go.viam.com/rdk/components/camera"
 	"go.viam.com/rdk/pointcloud"
@@ -43,17 +44,18 @@ type ObsDepthConfig struct {
 
 // obsDepth is the underlying struct actually used by the service.
 type obsDepth struct {
-	dm          *rimage.DepthMap
-	obstaclePts [][]float64
-	depthPts    [][]float64
-	hMin        float64
-	hMax        float64
-	sinTheta    float64
-	intrinsics  *transform.PinholeCameraIntrinsics
-	returnPCDs  bool
-	withGeoms   bool
-	k           int
-	depthStream gostream.VideoStream
+	dm            *rimage.DepthMap
+	obstaclePts   [][]float64
+	obstaclePtMap map[image.Point]struct{}
+	depthPts      [][]int
+	hMin          float64
+	hMax          float64
+	sinTheta      float64
+	intrinsics    *transform.PinholeCameraIntrinsics
+	returnPCDs    bool
+	withGeoms     bool
+	k             int
+	depthStream   gostream.VideoStream
 }
 
 const (
@@ -207,28 +209,84 @@ func (o *obsDepth) obsDepthWithIntrinsics(ctx context.Context, src camera.VideoS
 	if err != nil {
 		return nil, errors.New("could not convert image to depth map")
 	}
-	w, h := dm.Width(), dm.Height()
 	o.dm = dm
+	o.obstaclePtMap = make(map[image.Point]struct{})
 
 	var wg sync.WaitGroup
 	var lock sync.Mutex
-	obstaclePoints := make([][]float64, 0, w*h/sampleN)
-	o.makePointList()
 
-	for i := 0; i < len(o.depthPts); i++ {
+	o.makePointList2()
+	for _, pt := range o.depthPts {
 		wg.Add(1)
-		go func(i int) {
+		go func(pt []int) {
 			defer wg.Done()
-			if o.isObstaclePoint(o.depthPts[i]) {
-				lock.Lock()
-				obstaclePoints = append(obstaclePoints, o.depthPts[i])
-				lock.Unlock()
+			// Check if in map
+			lock.Lock()
+			_, ok := o.obstaclePtMap[image.Pt(pt[0], pt[1])]
+			lock.Unlock()
+			if ok {
+				return
 			}
-		}(i)
+
+			// Add every compatible pt you see to the map
+			for _, comparePt := range o.depthPts {
+				if o.isCompatible2(pt, comparePt) {
+					lock.Lock()
+					o.obstaclePtMap[image.Pt(comparePt[0], comparePt[1])] = struct{}{}
+					o.obstaclePtMap[image.Pt(pt[0], pt[1])] = struct{}{}
+					lock.Unlock()
+				}
+			}
+		}(pt)
+
 	}
 
 	wg.Wait()
+	fmt.Printf("LEN OF THE OBSTACLE PT MAP %v\n", len(o.obstaclePtMap))
+	obstaclePoints := make([][]float64, 0, o.dm.Width()*o.dm.Height()/sampleN)
+	for pt := range o.obstaclePtMap {
+		obstaclePoints = append(obstaclePoints, []float64{float64(pt.X), float64(pt.Y), float64(o.dm.GetDepth(pt.X, pt.Y))})
+	}
+	o.showObstaclePts("checkme.png", obstaclePoints)
+	//fmt.Println("THE OBSTACLE POINTS:")
+	//fmt.Println(obstaclePoints)
 	o.obstaclePts = obstaclePoints
+
+	/*
+
+		obstaclePoints := make([][]float64, 0, w*h/sampleN)
+		for pt := range o.obstaclePtMap{
+			obstaclePoints = append(obstaclePoints, pt)
+
+		}
+
+
+			w, h := dm.Width(), dm.Height()
+
+			o.dm = dm
+
+			var wg sync.WaitGroup
+			var lock sync.Mutex
+
+			obstaclePoints := make([][]float64, 0, w*h/sampleN)
+			o.makePointList()
+
+			for i := 0; i < len(o.depthPts); i++ {
+				wg.Add(1)
+				go func(i int) {
+					defer wg.Done()
+					if o.isObstaclePoint(o.depthPts[i]) {
+						lock.Lock()
+						obstaclePoints = append(obstaclePoints, o.depthPts[i])
+						lock.Unlock()
+					}
+				}(i)
+			}
+
+			wg.Wait()
+			o.obstaclePts = obstaclePoints
+
+	*/
 
 	// Cluster the points in 3D
 	boxes, outClusters, err := o.performKMeans3D(o.k)
@@ -277,6 +335,35 @@ func (o *obsDepth) isCompatible(p1, p2 []float64) bool {
 		return false
 	}
 	return true
+}
+
+// isCompatible2 will check compatibility between 2 points.
+// as defined by Manduchi et al.
+func (o *obsDepth) isCompatible2(p1, p2 []int) bool {
+	if len(p1) < 3 || len(p2) < 3 {
+		return false
+	}
+	xdist, ydist := math.Abs(float64(p1[0]-p2[0])), math.Abs(float64(p1[1]-p2[1]))
+	zdist := math.Abs(float64(p1[2] - p2[2]))
+	dist := math.Sqrt((xdist * xdist) + (ydist * ydist) + (zdist * zdist))
+
+	if ydist < o.hMin || ydist > o.hMax {
+		return false
+	}
+	if ydist/dist < o.sinTheta {
+		return false
+	}
+	return true
+}
+
+func (o *obsDepth) showObstaclePts(filename string, pointList [][]float64) {
+	out := rimage.NewImage(o.dm.Width(), o.dm.Height())
+	red := rimage.NewColor(255, 0, 0)
+
+	for _, pt := range pointList {
+		out.SetXY(int(pt[0]), int(pt[1]), red)
+	}
+	rimage.WriteImageToFile(filename, out)
 }
 
 // performKMeans3D will do k-means clustering on projected obstacle points.
@@ -333,6 +420,9 @@ func (o *obsDepth) performKMeans3D(k int) ([]spatialmath.Geometry, clusters.Clus
 	return boxes, clusters, err
 }
 
+/*
+
+
 // makePointList will populate o.depthPts with the depth data.
 func (o *obsDepth) makePointList() [][]float64 {
 	width, height := o.dm.Width(), o.dm.Height()
@@ -345,7 +435,22 @@ func (o *obsDepth) makePointList() [][]float64 {
 	o.depthPts = out
 	return out
 }
+*/
 
+// makePointList2 will populate o.depthPts with the depth data (from bottom left).
+func (o *obsDepth) makePointList2() [][]int {
+	width, height := o.dm.Width(), o.dm.Height()
+	out := make([][]int, 0, width*height)
+	for j := height - 1; j >= 0; j-- { //start from the bottom left
+		for i := 0; i < width; i += sampleN {
+			out = append(out, []int{i, j, int(o.dm.GetDepth(i, j))})
+		}
+	}
+	o.depthPts = out
+	return out
+}
+
+/*
 func (o *obsDepth) isObstaclePoint(candidate []float64) bool {
 	for _, pt := range o.depthPts {
 		if candidate[0] == pt[0] && candidate[1] == pt[1] {
@@ -357,3 +462,37 @@ func (o *obsDepth) isObstaclePoint(candidate []float64) bool {
 	}
 	return false
 }
+*/
+
+/*
+// isObstaclePointMap is another implementation of the obstacle point finding algorithm.
+// Starting from the bottom left, we will find the set of points compatible with the candidate,
+// add all of them (and the candidate) to the obstaclePtMap, and return a bool if there was any
+func (o *obsDepth) isObstaclePointMap(candidate image.Point) bool {
+	_, ok := o.obstaclePtMap[candidate]
+	if ok {
+		return true
+	}
+
+	w, h := o.dm.Width(), o.dm.Height()
+	out := false
+	for j := h; j > 0; j-- { //start from the bottom left
+		for i := 0; i < w; i++ {
+			// if in map already, move on to next pt
+			comparePt := image.Pt(i, j)
+			_, ok := o.obstaclePtMap[comparePt]
+			if ok {
+				continue
+			}
+
+			// if compatible, add to map
+			if o.isCompatible2(candidate, comparePt) {
+				out = true
+				o.obstaclePtMap[comparePt] = struct{}{}
+				o.obstaclePtMap[candidate] = struct{}{}
+			}
+		}
+	}
+	return out
+}
+*/
